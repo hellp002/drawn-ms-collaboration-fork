@@ -4,7 +4,7 @@
   "main": "server.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "proto:gen": "echo Generating typescript types from proto files... && npx proto-loader-gen-types --grpcLib=@grpc/grpc-js --outDir=proto/generatedTypes proto/collab.proto && echo Done",
+    "proto:gen": "echo Generating typescript types from proto files... && npx proto-loader-gen-types --grpcLib=@grpc/grpc-js --outDir=proto/generatedTypes proto/collaboration.proto && echo Done",
     "dev": "ts-node server.ts"
   },
   "author": "",
