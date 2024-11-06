@@ -12,9 +12,13 @@ export interface ProtoGrpcType {
     Collaboration: SubtypeConstructor<typeof grpc.Client, _collaboration_CollaborationClient> & { service: _collaboration_CollaborationDefinition }
     CollaborationAction: EnumTypeDefinition
     ConnectionResponse: MessageTypeDefinition
+    Empty: MessageTypeDefinition
+    GetRoomDrawingResponse: MessageTypeDefinition
     GetRoomRequest: MessageTypeDefinition
     GetRoomResponse: MessageTypeDefinition
     JoinRoomRequest: MessageTypeDefinition
+    UpdateExcalidrawRequest: MessageTypeDefinition
+    UploadImageFileRequest: MessageTypeDefinition
   }
   google: {
     protobuf: {
