@@ -18,6 +18,49 @@ service Collaboration {
             get: "/collab/{workspaceId}/room"
         };
     }
+
+    rpc GetRoomDrawing(GetRoomRequest) returns (GetRoomDrawingResponse) {
+        option (google.api.http) = {
+            get: "/collab/{workspaceId}/drawing"
+        };
+    
+    }
+
+    rpc UpdateExcalidraw(UpdateExcalidrawRequest) returns (Empty) {
+        option (google.api.http) = {
+            post: "/collab/{workspaceId}/drawing"
+            body: "*"
+        };
+    }
+
+    rpc UploadImageFile(UploadImageFileRequest) returns (Empty) {
+        option (google.api.http) = {
+            post: "/collab/{workspaceId}/image"
+            body: "*"
+        };
+    }
+
+}
+
+message Empty {}
+
+message UploadImageFileRequest {
+    int32 workspaceId = 1;
+    string fileID = 2;
+    string fileMimeType = 3;
+    string fileData = 4;
+}
+
+
+message UpdateExcalidrawRequest {
+    int32 workspaceId = 1;
+    CollaborationAction action = 2;
+    string data = 3;
+}
+
+message GetRoomDrawingResponse {
+    string data = 1;
+    string imageData = 2;
 }
 
 message JoinRoomRequest {
@@ -27,12 +70,12 @@ message JoinRoomRequest {
 
 message ConnectionResponse {
     CollaborationAction action = 1;
-    Any data = 2;
+    string data = 2;
 }
 
 message GetRoomRequest {
     int32 workspaceId = 1;
-}
+} 
 
 message GetRoomResponse {
     repeated string users = 1;
@@ -40,5 +83,9 @@ message GetRoomResponse {
 
 enum CollaborationAction {
     UPDATE_CONNECTION = 0;
+    ADD_ELEMENT = 1;
+    UPDATE_ELEMENT = 2;
+    DELETE_ELEMENT = 3;
+    ADD_IMAGE = 4;
 }
 
