@@ -2,7 +2,8 @@ import path from 'path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { ProtoGrpcType } from './proto/generatedTypes/collaboration';
-import { GetRoom, JoinRoom } from './services/collaborationService';
+import { GetRoom, GetRoomDrawing, JoinRoom, UpdateExcalidraw, UploadImageFile } from './services/collaborationService';
+import redisClient from './utils/db_redis';
 
 const PORT = 8083
 const SERVER_URI = `0.0.0.0:${PORT}`;
@@ -18,6 +19,9 @@ const server = new grpc.Server()
 server.addService(chatPackage.Collaboration.service, {
     GetRoom,
     JoinRoom,
+    UpdateExcalidraw,
+    GetRoomDrawing,
+    UploadImageFile,
 })
 
 
