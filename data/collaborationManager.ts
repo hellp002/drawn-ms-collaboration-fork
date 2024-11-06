@@ -1,9 +1,13 @@
 import { ServerWritableStream } from "@grpc/grpc-js";
 import { JoinRoomRequest__Output } from "../proto/generatedTypes/collaboration/JoinRoomRequest";
 import { ConnectionResponse } from "../proto/generatedTypes/collaboration/ConnectionResponse";
+import { CollaborationAction } from "../proto/generatedTypes/collaboration/CollaborationAction";
+import cacheManager from "./cacheManager";
 
 class CollaborationManager {
     private connections: Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>> = new Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>>
+    private drawingState: Map<number, any[]> = new Map<number, any[]>();
+    private imageState: Map<number, any[]> = new Map<number, any[]>();
     private static _instance: CollaborationManager
 
     private constructor() {}
@@ -38,12 +42,133 @@ class CollaborationManager {
         return Array.from(this.connections.get(workspaceId)?.keys() || [])
     }
 
-    public broadcastMessage(workspaceId: number, senderId: string, message: any, includeSender: boolean = false) {
+    public broadcastMessage(workspaceId: number, senderId: string, message: string,action: CollaborationAction = "UPDATE_CONNECTION", includeSender: boolean = false) {
         if (!this.connections.has(workspaceId)) return
+        const responseData : ConnectionResponse  = {
+            action: action,
+            data: message,
+        }
         this.connections.get(workspaceId)?.forEach((stream, userId) => {
-            if (!includeSender && userId === senderId) return
-            stream.write(message)
+            if (!includeSender && userId === senderId) return;
+            stream.write(responseData);
         })
+    }
+
+    public async getDrawingState(workspaceId: number): Promise<any[]> {
+        // if (!this.drawingState.has(workspaceId)) {
+        //     this.drawingState.set(workspaceId, [])
+        //     return [];
+        // } else {
+        //     return this.drawingState.get(workspaceId) || []
+        // }
+        if (await cacheManager.hasDrawingState(workspaceId)){
+            return cacheManager.getDrawingState(workspaceId);
+        }
+        return [];
+    }
+
+    public async getImageState(workspaceId: number): Promise<any[]> {
+        // if (!this.imageState.has(workspaceId)) {
+        //     this.imageState.set(workspaceId, [])
+        //     return [];
+        // } else {
+        //     return this.imageState.get(workspaceId) || []
+        // }
+        if (await cacheManager.hasImageState(workspaceId)){
+            return cacheManager.getImageState(workspaceId);
+        }
+        return [];
+    }
+
+    public async excuteDrawingAction(workspaceId: number, action: CollaborationAction, data: string) {
+        // if (!this.drawingState.has(workspaceId)) {
+        //     this.drawingState.set(workspaceId, [])
+        // }
+        //console.log(action);
+        //console.log(data);
+        
+        if (action === CollaborationAction.ADD_ELEMENT){
+            // add element to array
+            const objectData: any[] = JSON.parse(data);
+            // for (const element of objectData) {
+            //     // this.drawingState.get(workspaceId)?.push(element);
+            //     cacheManager.pushDrawingState(workspaceId, element);
+            // }
+            const promises = objectData.map(async (element) => {
+                return cacheManager.pushDrawingState(workspaceId, element);
+            })
+
+            await Promise.all(promises);
+            //console.log(this.drawingState.get(workspaceId));
+            return;
+            
+        } else if (action === CollaborationAction.DELETE_ELEMENT || action === CollaborationAction.UPDATE_ELEMENT) {
+            // const index = this.drawingState.get(workspaceId)?.findIndex(element => element.id === objectData.id);
+            // if (index !== undefined && index !== -1) {
+            //     // update element in array
+            //     this.drawingState.get(workspaceId)?.splice(index, 1, objectData);
+            // }
+            const indices : number[] = [];
+            const searchID = new Set<string>();
+            const objectData: any[] = JSON.parse(data);
+            for (const element of objectData){
+                searchID.add(element.id);
+            }
+            const drawingState = await this.getDrawingState(workspaceId);
+            for (let i = 0; i < drawingState.length; i++){
+                if (searchID.has(drawingState[i].id)){
+                    indices.push(i);
+                }
+            }
+            // for (const index of indices){
+            //     //this.getDrawingState(workspaceId).splice(index, 1, objectData[indices.indexOf(index)]);
+            //     cacheManager.replaceDrawingState(workspaceId, objectData[indices.indexOf(index)], index);
+            // }
+            const promises = indices.map(async (index) => {
+                return cacheManager.replaceDrawingState(workspaceId, objectData[indices.indexOf(index)], index);
+            })
+
+            await Promise.all(promises);
+            
+        } else if (action === CollaborationAction.ADD_IMAGE){
+            // store image data
+            const objectData: any = JSON.parse(data);
+            // if (!this.imageState.has(workspaceId)) {
+            //     this.imageState.set(workspaceId, [])
+            // }
+            // this.imageState.get(workspaceId)?.push(objectData);
+            await cacheManager.pushImageState(workspaceId, objectData);
+        }
+    }
+
+    public async getDrawingResponse(workspaceId: number): Promise<string> {
+        // if (!this.drawingState.has(workspaceId)) {
+        //     this.drawingState.set(workspaceId, [])
+        //     return JSON.stringify([]);
+        // } else {
+        //     return JSON.stringify(this.drawingState.get(workspaceId)) || JSON.stringify([]);
+        // }
+        if (await cacheManager.hasDrawingState(workspaceId)){
+            return JSON.stringify(await cacheManager.getDrawingState(workspaceId));
+        }
+        return JSON.stringify([]);
+    }
+
+    public async getImageDataResponse(workspaceId: number): Promise<string> {
+        // if (!this.imageState.has(workspaceId)) {
+        //     this.imageState.set(workspaceId, [])
+        //     return JSON.stringify([]);
+        // } else {
+        //     return JSON.stringify(this.imageState.get(workspaceId)) || JSON.stringify([]);
+        // }
+        if (await cacheManager.hasImageState(workspaceId)){
+            return JSON.stringify(await cacheManager.getImageState(workspaceId));
+        }
+        return JSON.stringify([]);
+    }
+
+    public pushDrawingStateToDatabase(){
+
     }
 
 }
