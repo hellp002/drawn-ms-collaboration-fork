@@ -3,11 +3,13 @@ import { JoinRoomRequest__Output } from "../proto/generatedTypes/collaboration/J
 import { ConnectionResponse } from "../proto/generatedTypes/collaboration/ConnectionResponse";
 import { CollaborationAction } from "../proto/generatedTypes/collaboration/CollaborationAction";
 import cacheManager from "./cacheManager";
+import redisClient from "../utils/db_redis";
+import { db } from "../utils/db";
+
+
 
 class CollaborationManager {
-    private connections: Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>> = new Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>>
-    private drawingState: Map<number, any[]> = new Map<number, any[]>();
-    private imageState: Map<number, any[]> = new Map<number, any[]>();
+    private connections: Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>> = new Map<number, Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>>([]);
     private static _instance: CollaborationManager
 
     private constructor() {}
@@ -36,6 +38,8 @@ class CollaborationManager {
         if (this.connections.get(workspaceId)?.size === 0) {
             this.connections.delete(workspaceId)
         }
+        collaborationManager.broadcastMessage(workspaceId, userId.toString(), 'User leave', "UPDATE_CONNECTION", true)
+
     }
 
     public getUserList(workspaceId: number): string[] {
@@ -148,10 +152,7 @@ class CollaborationManager {
         // } else {
         //     return JSON.stringify(this.drawingState.get(workspaceId)) || JSON.stringify([]);
         // }
-        if (await cacheManager.hasDrawingState(workspaceId)){
-            return JSON.stringify(await cacheManager.getDrawingState(workspaceId));
-        }
-        return JSON.stringify([]);
+        return JSON.stringify(await cacheManager.getDrawingState(workspaceId));
     }
 
     public async getImageDataResponse(workspaceId: number): Promise<string> {
@@ -161,17 +162,80 @@ class CollaborationManager {
         // } else {
         //     return JSON.stringify(this.imageState.get(workspaceId)) || JSON.stringify([]);
         // }
-        if (await cacheManager.hasImageState(workspaceId)){
-            return JSON.stringify(await cacheManager.getImageState(workspaceId));
-        }
-        return JSON.stringify([]);
+        return JSON.stringify(await cacheManager.getImageState(workspaceId));
     }
 
-    public pushDrawingStateToDatabase(){
+    public async pushStateToDatabase(){
+        //const drawingState = await cacheManager.getDrawingState()
+        const workspaceIds = await cacheManager.getAllDrawingWorkspaceIds();
+        const [isDirtyDrawingStates, isDirtyImageStates] = await Promise.all([cacheManager.checkDirtyDrawingState(workspaceIds), cacheManager.checkDirtyImageState(workspaceIds)]);
+        const promise: Promise<any>[] = [];
+        for (let i = 0; i < workspaceIds.length; i++){
+            const workspaceId = workspaceIds[i];
 
+            const isDirtyDrawingState = isDirtyDrawingStates[i];
+            const isDirtyImageState = isDirtyImageStates[i];
+            if (!isDirtyDrawingState && !isDirtyImageState){
+                continue;
+            }
+            const drawingStateString = (isDirtyDrawingState) ? (await cacheManager.getDrawingState(workspaceId)).map(element => JSON.stringify(element)) : undefined;
+            const imageStateString = (isDirtyImageState) ? (await cacheManager.getImageState(workspaceId)).map(element => JSON.stringify(element)) : undefined;
+            //const drawingStateString = drawingState.map(element => JSON.stringify(element));
+            //const imageStateString = imageState.map(element => JSON.stringify(element));
+            const found = await db.board.findUnique({
+                where: {
+                    workspaceId: workspaceId
+                }
+            })
+            if (found){
+                promise.push(db.board.update({
+                    where: {
+                        workspaceId: workspaceId
+                    },
+                    data: {
+                        drawingState: drawingStateString,
+                        imageState: imageStateString
+                    }
+                }))
+            } else {
+                promise.push(db.board.create({
+                    data: {
+                        workspaceId: workspaceId,
+                        drawingState: drawingStateString,
+                        imageState: imageStateString
+                    }
+                }))
+            }
+            console.log(`pushing workspaceId ${workspaceId} to database with dirty drawing state ${isDirtyDrawingState} and dirty image state ${isDirtyImageState}`);
+            if (isDirtyDrawingState){
+                promise.push(cacheManager.clearDirtyDrawingState(workspaceId));
+            }
+            if (isDirtyImageState){
+                promise.push(cacheManager.clearDirtyImageState(workspaceId));
+            }
+        }
+        await Promise.all(promise);
+        return;
+    }
+
+    public async checkUserPermission(workspaceId: number, userId: string, role: string) : Promise<PermissionType>{
+        console.log(`${process.env.WORKSPACE_BACKEND_URL}/workspaces/${workspaceId}/checkPermission`)
+        const result = await fetch(`${process.env.WORKSPACE_BACKEND_URL}/workspaces/${workspaceId}/checkPermission`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-role': role,
+                'x-id': userId
+            }});
+        if (result.ok){
+           return (await result.json()).permission;
+        }
+        console.log(result.status);
+        return"no";
     }
 
 }
 
 const collaborationManager = CollaborationManager.instance
+export type PermissionType = "no" | "viewer" | "editor";
 export default collaborationManager
