@@ -17,11 +17,24 @@ export async function GetRoom(call: ServerUnaryCall<GetRoomRequest__Output, GetR
     console.log('GetRoom called with', call.request)
     const userId = (call.metadata.get('x-id').length > 0) ? call.metadata.get('x-id')[0] : null
     const role = (call.metadata.get('x-role').length > 0) ? call.metadata.get('x-role')[0] : null
+    if (!userId || !role) {
+        call.emit('error', {
+            code: status.INVALID_ARGUMENT,
+            message: 'userId is required'
+        })
+        return
+    }
+
+    if (!call.request.workspaceId) {
+        call.emit('error', {
+            code: status.INVALID_ARGUMENT,
+            message: 'workspaceId is required'
+        })
+        return
+    }
     
 
-    const data = {
-        users: collaborationManager.getUserList(call.request.workspaceId || 0)
-    }
+   
 
 
     const origin = (call.metadata.get('origin').length > 0) ? call.metadata.get('origin')[0] : null
@@ -30,7 +43,18 @@ export async function GetRoom(call: ServerUnaryCall<GetRoomRequest__Output, GetR
     outgoingHeaders.set('origin', (origin) ? origin : '*');
     outgoingHeaders.set('Access-Control-Allow-Credentials', 'true');
     call.sendMetadata(outgoingHeaders)
-    
+
+    const permission = await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString());
+    if (permission === "no"){
+        call.emit('error', {
+            code: status.INVALID_ARGUMENT,
+            message: 'permission denied'
+        })
+        return
+    }
+    const data = {
+        users: collaborationManager.getUserList(call.request.workspaceId || 0)
+    }
 
     callback(null, data)
 }
@@ -72,7 +96,14 @@ export async function JoinRoom(call: ServerWritableStream<JoinRoomRequest__Outpu
     outgoingHeaders.set('origin', (origin) ? origin : '*');
     outgoingHeaders.set('Access-Control-Allow-Credentials', 'true');
     call.sendMetadata(outgoingHeaders)
-
+    const permission = await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString());
+    if (permission === "no") {
+        call.emit('error', {
+            code: status.PERMISSION_DENIED,
+            message: 'permission denied'
+        })
+        return
+    }
     collaborationManager.addConnection(call.request.workspaceId, userId.toString(), call)
     collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), 'User joined', "UPDATE_CONNECTION", true)
 }
@@ -98,6 +129,7 @@ export async function UpdateExcalidraw(call: ServerUnaryCall<UpdateExcalidrawReq
         return;
     }
 
+
     if (!call.request.data || !call.request.action) {
         call.emit('error', {
             code: status.INVALID_ARGUMENT,
@@ -105,16 +137,21 @@ export async function UpdateExcalidraw(call: ServerUnaryCall<UpdateExcalidrawReq
         });
         return;
     }
-
-    collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), call.request.data, call.request.action)
-    await collaborationManager.excuteDrawingAction(call.request.workspaceId, call.request.action, call.request.data);
-    //console.log("current drawing state", collaborationCacheManager.getDrawingResponse(call.request.workspaceId));
-
     const origin = (call.metadata.get('origin').length > 0) ? call.metadata.get('origin')[0] : null;
     const outgoingHeaders = new Metadata();
     outgoingHeaders.set('origin', (origin) ? origin : '*');
     outgoingHeaders.set('Access-Control-Allow-Credentials', 'true');
     call.sendMetadata(outgoingHeaders)
+    
+    const permission = await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString());
+    if (permission === "editor") {
+        collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), call.request.data, call.request.action)
+        await collaborationManager.excuteDrawingAction(call.request.workspaceId, call.request.action, call.request.data);
+        //console.log("current drawing state", collaborationCacheManager.getDrawingResponse(call.request.workspaceId));
+    } else {
+        console.log("permission denied cannot excute drawing action to other user");
+    }
+    
     
     callback(null, {});
 }
@@ -139,6 +176,7 @@ export async function GetRoomDrawing(call: ServerUnaryCall<GetRoomRequest__Outpu
         })
         return
     }
+    console.log('permission',await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString()));
 
     const origin = (call.metadata.get('origin').length > 0) ? call.metadata.get('origin')[0] : null
     const outgoingHeaders = new Metadata();
@@ -146,11 +184,23 @@ export async function GetRoomDrawing(call: ServerUnaryCall<GetRoomRequest__Outpu
     outgoingHeaders.set('Access-Control-Allow-Credentials', 'true');
     call.sendMetadata(outgoingHeaders)
 
-    const data = await collaborationManager.getDrawingResponse(call.request.workspaceId);
-    const imageData = await collaborationManager.getImageDataResponse(call.request.workspaceId);
+    const permission = await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString());
+    if (permission !== "no") {
+        const data = await collaborationManager.getDrawingResponse(call.request.workspaceId);
+        const imageData = await collaborationManager.getImageDataResponse(call.request.workspaceId);
+        callback(null, {data: data, imageData: imageData});
+    } else {
+        console.log("permission denied cannot retrieve drawing and image data from other user");
+        // call.emit('error', {
+        //     code: status.PERMISSION_DENIED,
+        //     message: 'permission denied'
+        // })
+        callback(null, {data: '[]', imageData: '[]'});
+        
+    }
     //console.log(data);
 
-    callback(null, {data: data, imageData: imageData});
+    
 }
 
 export async function UploadImageFile(call : ServerUnaryCall<UploadImageFileRequest__Output,Empty>, callback: sendUnaryData<Empty>){
@@ -195,20 +245,22 @@ export async function UploadImageFile(call : ServerUnaryCall<UploadImageFileRequ
     outgoingHeaders.set('origin', (origin) ? origin : '*');
     outgoingHeaders.set('Access-Control-Allow-Credentials', 'true');
     call.sendMetadata(outgoingHeaders)
-    const fileObject = JSON.parse(call.request.fileData);
 
-    const fileURL = await uploadImage(fileObject.dataURL, call.request.fileID, call.request.workspaceId, call.request.fileMimeType, "images");
+    const permission = await collaborationManager.checkUserPermission(call.request.workspaceId, userId.toString(), role.toString());
+    if (permission === "editor") {
+        const fileObject = JSON.parse(call.request.fileData);
+        const fileURL = await uploadImage(fileObject.dataURL, call.request.fileID, call.request.workspaceId, call.request.fileMimeType, "images");
+        fileObject.dataURL = fileURL;
+        const newFileObjectData = JSON.stringify(fileObject);
+        // upload to server
+        await collaborationManager.excuteDrawingAction(call.request.workspaceId, CollaborationAction.ADD_IMAGE, newFileObjectData);
+        // broadcast to all users except the sender
+        collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), newFileObjectData, "ADD_IMAGE", false);
 
-    fileObject.dataURL = fileURL;
-
-    const newFileObjectData = JSON.stringify(fileObject);
-    // upload to server
-    await collaborationManager.excuteDrawingAction(call.request.workspaceId, CollaborationAction.ADD_IMAGE, newFileObjectData);
-    // broadcast to all users except the sender
-    collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), newFileObjectData, "ADD_IMAGE", false);
-
-    console.log("current drawing state", await collaborationManager.getImageState(call.request.workspaceId));
-
+        console.log("current drawing state", await collaborationManager.getImageState(call.request.workspaceId));
+    } else {
+        console.log("permission denied cannot excute drawing action to other user and server");
+    }
 
     callback(null, {});
 }
