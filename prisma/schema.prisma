@@ -15,8 +15,9 @@ datasource db {
 
 model Board {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  workspaceId Int
-  data        Json     @default("{}")
+  workspaceId Int      @unique
+  drawingState   String[]     @default([])
+  imageState  String[]     @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
 }
