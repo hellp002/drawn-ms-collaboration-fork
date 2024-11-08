@@ -26,6 +26,8 @@ class CollaborationManager {
             this.connections.set(workspaceId, new Map<string, ServerWritableStream<JoinRoomRequest__Output, ConnectionResponse>>())
         }
         this.connections.get(workspaceId)?.set(userId, stream)
+        collaborationManager.broadcastMessage(workspaceId, userId.toString(), JSON.stringify(this.getUserList(workspaceId)), "UPDATE_CONNECTION", true)
+
         // this.broadcastMessage(workspaceId, userId, {
         //     action: "UPDATE_CONNECTION",
 
@@ -38,7 +40,7 @@ class CollaborationManager {
         if (this.connections.get(workspaceId)?.size === 0) {
             this.connections.delete(workspaceId)
         }
-        collaborationManager.broadcastMessage(workspaceId, userId.toString(), 'User leave', "UPDATE_CONNECTION", true)
+        collaborationManager.broadcastMessage(workspaceId, userId.toString(), JSON.stringify(this.getUserList(workspaceId)), "UPDATE_CONNECTION", true)
 
     }
 

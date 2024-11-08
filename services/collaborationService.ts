@@ -105,7 +105,6 @@ export async function JoinRoom(call: ServerWritableStream<JoinRoomRequest__Outpu
         return
     }
     collaborationManager.addConnection(call.request.workspaceId, userId.toString(), call)
-    collaborationManager.broadcastMessage(call.request.workspaceId, userId.toString(), 'User joined', "UPDATE_CONNECTION", true)
 }
 
 export async function UpdateExcalidraw(call: ServerUnaryCall<UpdateExcalidrawRequest__Output,Empty>, callback: sendUnaryData<Empty>){
