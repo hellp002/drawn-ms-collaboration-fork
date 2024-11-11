@@ -48,8 +48,7 @@ class CacheManager{
                     drawingState: true
                 }
             })
-            console.log("databaseResult", databaseResult);
-            if (databaseResult && databaseResult.drawingState){
+            if (databaseResult && databaseResult.drawingState.length > 0){
                 await this.cache.rPush(`drawingState:${workspaceId}`, databaseResult.drawingState);
             } else {
                 return [];
@@ -70,8 +69,7 @@ class CacheManager{
                     imageState: true
                 }
             })
-            console.log("databaseResult", databaseResult);
-            if (databaseResult && databaseResult.imageState){
+            if (databaseResult && databaseResult.imageState.length > 0){
                 await this.cache.rPush(`imageState:${workspaceId}`, databaseResult.imageState);
             } else {
                 return [];
